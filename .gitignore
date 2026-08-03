@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# PyInstaller build artifacts (the exe is rebuilt with: python -m PyInstaller ...)
+.build/
+MapBuilder.exe
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+
+# Node (if ever added)
+node_modules/

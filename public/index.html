@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Map Builder</title>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🗺️</text></svg>">
+<script type="importmap">
+{ "imports": {
+    "three": "/lib/three.module.min.js",
+    "three/addons/controls/OrbitControls.js": "/lib/OrbitControls.js"
+} }
+</script>
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">🗺️ <span>Map Builder</span></div>
+
+  <nav id="modeTabs">
+    <button class="mode-tab active" data-mode="sub" title="Design a single grid board">Sub-Board Editor</button>
+    <button class="mode-tab" data-mode="board" title="Combine saved sub-boards into a full board">Board Assembly</button>
+  </nav>
+
+  <div class="doc-controls">
+    <input id="docName" type="text" spellcheck="false" value="Untitled Sub-Board" title="Name of the current document">
+    <button id="btnNew"    class="tb" title="Start a fresh document">✨ New</button>
+    <button id="btnSave"   class="tb primary" title="Save (Ctrl+S)">💾 Save</button>
+    <button id="btnSaveAs" class="tb" title="Save a copy under a new name">Save As…</button>
+    <button id="btnLoad"   class="tb" title="Browse and load saved documents (Ctrl+O)">📂 Load</button>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="bg-controls" title="Scene background">
+    <label>BG</label>
+    <select id="bgSelect">
+      <option value="#14161c">Charcoal</option>
+      <option value="#2a2f3a">Slate</option>
+      <option value="#0d1020">Night</option>
+      <option value="#87b5d9">Sky</option>
+      <option value="#e8e4da">Paper</option>
+      <option value="#24352a">Forest</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <input id="bgColor" type="color" value="#14161c" title="Pick any background color">
+  </div>
+  <button id="btnHelp" class="tb" title="Controls &amp; help">❓ Help</button>
+</header>
+
+<div id="workspace">
+
+  <!-- ============ LEFT: tools + presets + textures ============ -->
+  <aside id="leftPanel">
+    <section class="panel" id="toolsPanel">
+      <h3>Tools</h3>
+      <div id="toolbar">
+        <button class="tool active" data-tool="select"   title="Select / move things (V or 1)"><i>🖱️</i>Select</button>
+        <button class="tool sub-only" data-tool="paint"    title="Paint ground texture on tiles (2)"><i>🎨</i>Paint Ground</button>
+        <button class="tool sub-only" data-tool="stamp"    title="Stamp a saved tile preset onto tiles (3)"><i>📋</i>Tile Preset</button>
+        <button class="tool sub-only" data-tool="gameplay" title="Add gameplay layer (tracks, buttons) — centered on tile (4)"><i>🎯</i>Gameplay</button>
+        <button class="tool sub-only" data-tool="custom"   title="Add customization art — free position &amp; size (5)"><i>🌸</i>Customize</button>
+        <button class="tool sub-only" data-tool="label"    title="Add a label marker to a tile — goes on top (6)"><i>🏷️</i>Label</button>
+        <button class="tool sub-only" data-tool="cube"     title="Place a 3D cube on a tile (7)"><i>🧊</i>Cube</button>
+        <button class="tool sub-only" data-tool="token"    title="Place a token anywhere on the board (8)"><i>🪙</i>Token</button>
+        <button class="tool sub-only" data-tool="erase"    title="Remove layers, cubes and tokens (E or 9)"><i>🧹</i>Erase</button>
+        <button class="tool board-only hidden" data-tool="addsub" title="Add a saved sub-board to this board"><i>➕</i>Add Sub-Board</button>
+        <button class="tool board-only hidden" data-tool="random" title="Randomly pick sub-boards for the current slot layout"><i>🎲</i>Randomize</button>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="presetPanel">
+      <h3 id="presetTitle">Presets</h3>
+      <div id="presetList" class="card-grid small"></div>
+      <button id="btnNewPreset" class="tb wide">＋ New preset</button>
+    </section>
+
+    <section class="panel grow" id="texPanel">
+      <h3>Textures</h3>
+      <input id="texSearch" type="search" placeholder="🔍 Search textures…">
+      <select id="texCategory"><option value="">All categories</option></select>
+      <div id="texGrid" class="tex-grid"></div>
+      <button id="btnUpload" class="tb wide" title="Add your own texture images">⬆ Upload textures…</button>
+    </section>
+  </aside>
+
+  <!-- ============ CENTER: 3D viewport ============ -->
+  <main id="viewportWrap">
+    <canvas id="viewport"></canvas>
+    <div id="gizmo" class="hidden">
+      <button id="gizMove" title="Drag to move">✥</button>
+      <button id="gizRotate" title="Drag to rotate (hold Ctrl for 15° steps)">⟳</button>
+    </div>
+    <div id="hintbar"></div>
+    <div id="toast" class="hidden"></div>
+  </main>
+
+  <!-- ============ RIGHT: board settings + selection + layers ============ -->
+  <aside id="rightPanel">
+    <section class="panel" id="gridPanel">
+      <h3>Board Settings</h3>
+      <div class="frow"><label>Columns</label><input id="gridCols" type="number" min="1" max="50" value="3"></div>
+      <div class="frow"><label>Rows</label><input id="gridRows" type="number" min="1" max="50" value="6"></div>
+      <div class="frow"><label>Tile size (cm)</label><input id="gridCell" type="number" min="1" max="30" step="0.5" value="5"></div>
+      <p class="note">Default tiles are 5 × 5 cm. Existing paint is kept when resizing.</p>
+    </section>
+
+    <section class="panel hidden" id="sbListPanel">
+      <h3>Sub-Boards on this Board</h3>
+      <div id="sbList" class="row-list"></div>
+      <p class="note">Click ➕ Add Sub-Board (left) to place saved sub-boards, then drag them into position.</p>
+    </section>
+
+    <section class="panel" id="propsPanel">
+      <h3>Selection</h3>
+      <div id="propsBody"><p class="note">Nothing selected. Use the Select tool and click an object.</p></div>
+    </section>
+
+    <section class="panel grow" id="layersPanel">
+      <h3>Layers <span class="note-inline">(top → bottom)</span></h3>
+      <div id="layersList" class="row-list"></div>
+    </section>
+  </aside>
+</div>
+
+<div id="modalRoot"></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
