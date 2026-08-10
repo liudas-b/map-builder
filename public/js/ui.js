@@ -1,5 +1,5 @@
 // All DOM UI: panels, texture browser, presets, modals, save browser.
-import { state, doc, uid, nextOverlayOrder } from './state.js';
+import { state, doc, uid, nextOverlayOrder, MARKER_TYPES } from './state.js';
 import { api, texUrl } from './api.js';
 
 let App = null;
@@ -172,6 +172,104 @@ export function openUploadDialog() {
   });
 }
 
+// ------------------------------------------------------------ game assets (cards & characters)
+const CARDS_CAT = 'Cards';
+const CHARS_CAT = 'Characters';
+const inCat = (item, cat) => item.category === cat || item.category.startsWith(cat + '/');
+
+export function refreshGamePanels() {
+  const cards = state.textures.filter(t => inCat(t, CARDS_CAT));
+  const grid = $('cardsGrid');
+  grid.innerHTML = '';
+  for (const t of cards) {
+    grid.append(el('div', {
+      class: 'tex-item' + (state.gameSel?.kind === 'card' && state.gameSel.path === t.path ? ' active' : ''),
+      title: t.name,
+      onclick: () => App.selectGameAsset({ kind: 'card', path: t.path, name: t.name }),
+    },
+      el('img', { src: texUrl(t.path), loading: 'lazy' }),
+      el('div', { class: 'tex-name', text: t.name })));
+  }
+  if (!cards.length) grid.append(el('p', { class: 'note', text: 'No cards yet. Upload card images below.' }));
+
+  const chars = state.models.filter(m => inCat(m, CHARS_CAT));
+  const list = $('charsList');
+  list.innerHTML = '';
+  for (const m of chars) {
+    const isSel = state.gameSel?.kind === 'char' && state.gameSel.path === m.path;
+    list.append(el('div', {
+      class: 'lrow' + (isSel ? ' active' : ''),
+      onclick: () => App.selectGameAsset({ kind: 'char', path: m.path, name: m.name }),
+    },
+      el('span', { class: 'char-ico', text: '🧍' }),
+      el('span', { class: 'lname', text: m.name }),
+      el('span', { class: 'badge cube', text: m.path.split('.').pop().toUpperCase() })));
+  }
+  if (!chars.length) list.append(el('p', { class: 'note', text: 'No character models yet. Upload .fbx / .glb files below.' }));
+}
+
+export function refreshGameInfo() {
+  const body = $('gameInfoBody');
+  body.innerHTML = '';
+  const sel = state.gameSel;
+  if (!sel) {
+    body.append(el('p', { class: 'note', text: 'Select a card or character on the left to preview it in 3D.' }));
+    return;
+  }
+  body.append(el('div', { class: 'props-head' },
+    sel.kind === 'card' ? el('img', { class: 'props-thumb', src: texUrl(sel.path) })
+      : el('div', { class: 'props-thumb char-thumb', text: '🧍' }),
+    el('div', {},
+      el('div', { class: 'kind', text: sel.name }),
+      el('div', { class: 'sub', text: sel.kind === 'card' ? 'Card — 6.3 × 8.8 cm' : 'Character model' }))));
+  body.append(el('p', { class: 'note', text: sel.kind === 'card'
+    ? 'Cards are shown at physical size (63 × 88 mm) next to a 5 × 5 cm tile.'
+    : 'Characters are auto-scaled to ≈4.2 cm tall on a 5 × 5 cm reference tile.' }));
+  body.append(el('p', { class: 'note', text: sel.path }));
+}
+
+function openGameUploadDialog(kind) {
+  const isCard = kind === 'card';
+  const file = el('input', {
+    type: 'file', multiple: '',
+    accept: isCard ? '.png,.jpg,.jpeg,.webp' : '.fbx,.glb,.gltf,.obj',
+  });
+  const close = openModal({
+    title: isCard ? '⬆ Upload cards' : '⬆ Upload characters',
+    narrow: true,
+    body: [
+      el('p', { class: 'note', text: isCard
+        ? `Card images (png/jpg). They are stored in TextureAssets/${CARDS_CAT} and appear in the Cards panel.`
+        : `3D character models (.fbx, .glb, .obj). They are stored in TextureAssets/${CHARS_CAT} and appear in the Characters panel.` }),
+      el('div', { class: 'frow' }, el('label', { text: 'Files' }), file),
+    ],
+    foot: el('button', {
+      class: 'tb primary', text: 'Upload',
+      onclick: async () => {
+        const files = [...file.files];
+        if (!files.length) return toast('Choose at least one file', true);
+        try {
+          for (const f of files) {
+            const dataUrl = await new Promise((res, rej) => {
+              const r = new FileReader();
+              r.onload = () => res(r.result); r.onerror = rej;
+              r.readAsDataURL(f);
+            });
+            await api.upload(isCard ? CARDS_CAT : CHARS_CAT, f.name, dataUrl);
+          }
+          close();
+          await App.reloadTextures();
+          await App.reloadModels();
+          refreshGamePanels();
+          toast(`Uploaded ${files.length} file${files.length > 1 ? 's' : ''} ✓`);
+        } catch (e) { toast('Upload failed: ' + e.message, true); }
+      },
+    }),
+  });
+}
+export const openCardUploadDialog = () => openGameUploadDialog('card');
+export const openCharUploadDialog = () => openGameUploadDialog('char');
+
 // ------------------------------------------------------------ preset panel (left)
 const presetKindForTool = { cube: 'cubepreset', token: 'tokenpreset', stamp: 'tilepreset' };
 
@@ -211,6 +309,25 @@ export function refreshPresetPanel() {
     list.append(card);
   }
   $('btnNewPreset').classList.toggle('hidden', kind === 'tilepreset');
+}
+
+// ------------------------------------------------------------ marker panel (left)
+export function refreshMarkerPanel() {
+  const panel = $('markerPanel');
+  const show = state.tool === 'marker' && state.mode === 'sub';
+  panel.classList.toggle('hidden', !show);
+  if (!show) return;
+  const list = $('markerList');
+  list.innerHTML = '';
+  for (const m of MARKER_TYPES) {
+    list.append(el('div', {
+      class: 'lrow' + (state.activeMarker === m.id ? ' active' : ''),
+      onclick: () => { state.activeMarker = m.id; refreshMarkerPanel(); },
+    },
+      el('span', { class: 'marker-chip', style: `background:${m.color}`, text: m.short }),
+      el('span', { class: 'lname', text: m.label }),
+      m.unique ? el('span', { class: 'badge ground', text: '1×' }) : null));
+  }
 }
 
 // ------------------------------------------------------------ preset creation dialogs
@@ -514,6 +631,27 @@ export function refreshProps() {
         });
       },
     }));
+    // gameplay markers on this tile
+    const mk = state.sub.data.markers?.[key] || [];
+    if (mk.length) {
+      body.append(el('p', { class: 'note', text: 'Gameplay markers:' }));
+      for (const tp of mk) {
+        const def = MARKER_TYPES.find(m => m.id === tp);
+        body.append(el('div', { class: 'lrow' },
+          el('span', { class: 'marker-chip', style: `background:${def?.color || '#888'}`, text: def?.short || '?' }),
+          el('span', { class: 'lname', text: def?.label || tp }),
+          el('button', {
+            class: 'mini del', text: '✕', title: 'Remove marker',
+            onclick: (e) => {
+              e.stopPropagation();
+              const arr = state.sub.data.markers[key];
+              arr.splice(arr.indexOf(tp), 1);
+              if (!arr.length) delete state.sub.data.markers[key];
+              App.commit();
+            },
+          })));
+      }
+    }
     // layers on this tile
     const here = state.sub.data.overlays.filter(o => o.type !== 'custom' && o.row === sel.row && o.col === sel.col);
     if (here.length) {
@@ -632,7 +770,15 @@ export function refreshProps() {
       el('div', {},
         el('div', { class: 'kind', text: sb.name }),
         el('div', { class: 'sub', text: 'Sub-board placement' }))));
+    const orderIn = num(sb.order || 0, 1, v => {
+      sb.order = Math.max(0, Math.round(v)) || null;
+      state.board.dirty = true;
+      App.commitBoardTransform(sb);
+      refreshSbList();
+    }, 0);
     body.append(
+      frow('Map tile # (1–4)', orderIn),
+      el('p', { class: 'note', text: 'Reveal order for the Map Tester: 1 = starting tile, then clockwise. 0 = unset.' }),
       frow('X (cm)', num(sb.x, 1, v => { sb.x = v; App.commitBoardTransform(sb); })),
       frow('Z (cm)', num(sb.z, 1, v => { sb.z = v; App.commitBoardTransform(sb); })),
       frow('Angle (°)', num(sb.rot || 0, 5, v => { sb.rot = v; App.commitBoardTransform(sb); })),
@@ -798,6 +944,7 @@ export function refreshSbList() {
       onclick: () => App.select({ kind: 'sb', uid: sb.uid }),
     },
       el('span', { class: 'badge ground', text: 'board' }),
+      sb.order ? el('span', { class: 'badge gameplay', text: '#' + sb.order }) : null,
       el('span', { class: 'lname', text: sb.name }),
       el('button', {
         class: 'mini del', text: '✕', title: 'Remove from board',
@@ -892,7 +1039,8 @@ export function openHelp() {
           <li><b>Cube</b> — pick a cube preset (Mountain, Box, Train…), click a tile.</li>
           <li><b>Token</b> — pick a token preset, click anywhere on the board.</li>
           <li><b>Tile Preset</b> — stamp a saved tile (ground + layers) onto tiles.</li>
-          <li><b>Erase</b> — click layers / cubes / tokens to remove them.</li>
+          <li><b>Marker</b> — invisible gameplay data for the Map Tester: checkpoint, coin piles, large-coin platforms, control panels, rails. Click a tile to toggle.</li>
+          <li><b>Erase</b> — click layers / cubes / tokens / markers to remove them.</li>
         </ul>
       </div>
       <div>

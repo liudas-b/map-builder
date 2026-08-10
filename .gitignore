@@ -6,6 +6,9 @@ __pycache__/
 .build/
 MapBuilder.exe
 
+# Shareable zips (created automatically by make-build.ps1)
+builds/
+
 # OS junk
 Thumbs.db
 .DS_Store

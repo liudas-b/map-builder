@@ -9,7 +9,8 @@
 <script type="importmap">
 { "imports": {
     "three": "/lib/three.module.min.js",
-    "three/addons/controls/OrbitControls.js": "/lib/OrbitControls.js"
+    "three/addons/controls/OrbitControls.js": "/lib/OrbitControls.js",
+    "three/addons/loaders/FBXLoader.js": "/lib/loaders/FBXLoader.js"
 } }
 </script>
 </head>
@@ -21,6 +22,8 @@
   <nav id="modeTabs">
     <button class="mode-tab active" data-mode="sub" title="Design a single grid board">Sub-Board Editor</button>
     <button class="mode-tab" data-mode="board" title="Combine saved sub-boards into a full board">Board Assembly</button>
+    <button class="mode-tab" data-mode="game" title="In-game assets: cards and playable characters">Game Assets</button>
+    <button class="mode-tab" data-mode="tester" title="Simulate games on a saved board and analyze the results">Map Tester</button>
   </nav>
 
   <div class="doc-controls">
@@ -64,8 +67,10 @@
         <button class="tool sub-only" data-tool="label"    title="Add a label marker to a tile — goes on top (6)"><i>🏷️</i>Label</button>
         <button class="tool sub-only" data-tool="cube"     title="Place a 3D cube on a tile (7)"><i>🧊</i>Cube</button>
         <button class="tool sub-only" data-tool="token"    title="Place a token anywhere on the board (8)"><i>🪙</i>Token</button>
-        <button class="tool sub-only" data-tool="erase"    title="Remove layers, cubes and tokens (E or 9)"><i>🧹</i>Erase</button>
+        <button class="tool sub-only" data-tool="marker"   title="Mark gameplay spaces for the Map Tester: checkpoint, coin spots, rails… (M)"><i>📍</i>Marker</button>
+        <button class="tool sub-only" data-tool="erase"    title="Remove layers, cubes, tokens and markers (E or 9)"><i>🧹</i>Erase</button>
         <button class="tool board-only hidden" data-tool="addsub" title="Add a saved sub-board to this board"><i>➕</i>Add Sub-Board</button>
+        <button class="tool board-only hidden" data-tool="arrange" title="Snap the 4 sub-boards into the game's loop layout (tile order 1→4, empty 3×3 center)"><i>⊞</i>Auto-Arrange</button>
         <button class="tool board-only hidden" data-tool="random" title="Randomly pick sub-boards for the current slot layout"><i>🎲</i>Randomize</button>
       </div>
     </section>
@@ -74,6 +79,40 @@
       <h3 id="presetTitle">Presets</h3>
       <div id="presetList" class="card-grid small"></div>
       <button id="btnNewPreset" class="tb wide">＋ New preset</button>
+    </section>
+
+    <section class="panel hidden" id="markerPanel">
+      <h3>Gameplay Markers</h3>
+      <div id="markerList" class="row-list"></div>
+      <p class="note">Markers are game data for the Map Tester — where the checkpoint, coin piles, large-coin platforms, control panels and train rails are. Click a tile to toggle the selected marker. 1× markers move when stamped elsewhere.</p>
+    </section>
+
+    <section class="panel tester-only hidden" id="testerPanel">
+      <h3>Simulation Setup</h3>
+      <div class="frow"><label>Board</label><select id="testBoardSel"></select></div>
+      <div class="frow"><label>Players</label>
+        <select id="testPlayers">
+          <option value="2">2</option><option value="3">3</option>
+          <option value="4" selected>4</option><option value="5">5</option>
+        </select>
+      </div>
+      <div id="testPersonas"></div>
+      <div class="frow"><label>Games</label><input id="testGames" type="number" min="1" max="2000" value="200"></div>
+      <div class="frow"><label>Min / turn</label><input id="testMinutes" type="number" min="0.5" step="0.5" value="3.5"></div>
+      <button id="btnCalc" class="tb primary wide">▶ Calculate</button>
+      <p class="note">Runs full games with AI players (Racer / Bully / Diplomat) and reports playtime, moves, rounds, win rates and more. A heatmap of visited spaces is drawn on the board.</p>
+    </section>
+
+    <section class="panel game-only hidden" id="cardsPanel">
+      <h3>Cards</h3>
+      <div id="cardsGrid" class="tex-grid cards"></div>
+      <button id="btnUploadCards" class="tb wide" title="Add card images (they go to TextureAssets/Cards)">⬆ Upload cards…</button>
+    </section>
+
+    <section class="panel game-only hidden" id="charsPanel">
+      <h3>Characters</h3>
+      <div id="charsList" class="row-list"></div>
+      <button id="btnUploadChars" class="tb wide" title="Add 3D character models (.fbx, .glb, .obj)">⬆ Upload characters…</button>
     </section>
 
     <section class="panel grow" id="texPanel">
@@ -94,6 +133,43 @@
     </div>
     <div id="hintbar"></div>
     <div id="toast" class="hidden"></div>
+
+    <!-- player aid overlay (Map Tester replay) -->
+    <div id="playerAid" class="hidden">
+      <div id="aidHead"></div>
+      <div id="aidWrap">
+        <img id="aidImg" src="/assets/PlayerAid.png" alt="Player aid">
+        <div id="aidDots"></div>
+      </div>
+    </div>
+    <img id="cardPreview" class="hidden" alt="Card preview">
+
+    <!-- replay player (Map Tester) -->
+    <div id="replayBar" class="hidden">
+      <div id="replayStatus"></div>
+      <div id="replayTimeline">
+        <div id="replayMarks"></div>
+        <input id="replaySlider" type="range" min="0" max="1" value="0" step="1">
+      </div>
+      <div id="replayControls">
+        <button id="btnRpStart" class="tb" title="Jump to start">⏮</button>
+        <button id="btnRpPrevTurn" class="tb" title="Previous turn">⏪</button>
+        <button id="btnRpPrev" class="tb" title="Step back one move">◀</button>
+        <button id="btnRpPlay" class="tb primary" title="Play / pause">▶</button>
+        <button id="btnRpNext" class="tb" title="Step forward one move">▶▶</button>
+        <button id="btnRpNextTurn" class="tb" title="Next turn">⏩</button>
+        <button id="btnRpEnd" class="tb" title="Jump to end">⏭</button>
+        <select id="rpSpeed" title="Playback speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+        </select>
+        <button id="btnRpClose" class="tb danger" title="Close replay">✕</button>
+      </div>
+      <div id="replayCards" title="Cards in play order — click one to jump to when it was played"></div>
+    </div>
   </main>
 
   <!-- ============ RIGHT: board settings + selection + layers ============ -->
@@ -110,6 +186,16 @@
       <h3>Sub-Boards on this Board</h3>
       <div id="sbList" class="row-list"></div>
       <p class="note">Click ➕ Add Sub-Board (left) to place saved sub-boards, then drag them into position.</p>
+    </section>
+
+    <section class="panel grow tester-only hidden" id="testResultsPanel">
+      <h3>Analysis</h3>
+      <div id="testResults"></div>
+    </section>
+
+    <section class="panel game-only hidden" id="gameInfoPanel">
+      <h3>Asset</h3>
+      <div id="gameInfoBody"><p class="note">Select a card or character on the left to preview it in 3D.</p></div>
     </section>
 
     <section class="panel" id="propsPanel">

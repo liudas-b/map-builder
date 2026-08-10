@@ -29,7 +29,8 @@ SAVES = os.path.join(ROOT, "saves")
 
 SAVE_TYPES = ("subboard", "board", "tilepreset", "cubepreset", "tokenpreset")
 TEXTURE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")
-PORT = 8420
+MODEL_EXTS = (".fbx", ".glb", ".gltf", ".obj")
+PORT = int(os.environ.get("PORT", "8420"))
 
 
 # ---------------------------------------------------------------- helpers
@@ -107,6 +108,23 @@ def list_textures():
                 "category": cat,
             })
     return {"textures": items, "categories": sorted(cats, key=str.lower)}
+
+
+def list_models():
+    items = []
+    for dirpath, _dirs, files in os.walk(ASSETS):
+        rel_dir = os.path.relpath(dirpath, ASSETS).replace("\\", "/")
+        if rel_dir == ".":
+            rel_dir = ""
+        for fn in sorted(files):
+            if os.path.splitext(fn)[1].lower() not in MODEL_EXTS:
+                continue
+            items.append({
+                "path": (rel_dir + "/" + fn) if rel_dir else fn,
+                "name": os.path.splitext(fn)[0],
+                "category": rel_dir or "(root)",
+            })
+    return {"models": items}
 
 
 # ---------------------------------------------------------------- seeding
@@ -264,6 +282,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["textures"] and method == "GET":
             return self.send_json(list_textures())
 
+        if parts == ["models"] and method == "GET":
+            return self.send_json(list_models())
+
         if parts == ["upload"] and method == "POST":
             return self.api_upload()
 
@@ -299,7 +320,7 @@ class Handler(BaseHTTPRequestHandler):
         data_url = body.get("dataUrl", "")
         if "," not in data_url:
             return self.send_json({"error": "bad dataUrl"}, 400)
-        if os.path.splitext(filename)[1].lower() not in TEXTURE_EXTS:
+        if os.path.splitext(filename)[1].lower() not in TEXTURE_EXTS + MODEL_EXTS:
             return self.send_json({"error": "unsupported file type"}, 400)
         raw = base64.b64decode(data_url.split(",", 1)[1])
         folder = safe_join(ASSETS, category)

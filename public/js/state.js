@@ -12,8 +12,21 @@ export function newSubData(cols = 3, rows = 6, cell = 5) {
     overlays: [],   // { id, type: gameplay|custom|label, tex, rot, order, row?, col?, x?, z?, w?, h? }
     cubes: [],      // { id, row, col, rot, preset: {name, height, top, bottom, front, back, left, right} }
     tokens: [],     // { id, x, z, w, l, h, rot, top, bottom }
+    markers: {},    // "row,col" -> [marker type ids] — invisible game data for the Map Tester
   };
 }
+
+// Gameplay marker types the Map Tester understands.
+// unique: at most one of these per sub-board (stamping elsewhere moves it).
+export const MARKER_TYPES = [
+  { id: 'checkpoint', label: 'Checkpoint', color: '#3ecf8e', short: 'CP', unique: true },
+  { id: 'coin3', label: 'Small Coins ×3', color: '#d99a0b', short: 'C3', unique: true },
+  { id: 'coin4', label: 'Small Coins ×4', color: '#d99a0b', short: 'C4', unique: true },
+  { id: 'large-a', label: 'Large Coin A (1st)', color: '#ff7043', short: 'LA', unique: true },
+  { id: 'large-b', label: 'Large Coin B (2nd)', color: '#ff7043', short: 'LB', unique: true },
+  { id: 'panel', label: 'Control Panel', color: '#4f8cff', short: 'PN', unique: false },
+  { id: 'rail', label: 'Rail / Track', color: '#9b59b6', short: 'RL', unique: false },
+];
 
 export function newBoardData() {
   return {
@@ -23,12 +36,15 @@ export function newBoardData() {
 }
 
 export const state = {
-  mode: 'sub',            // 'sub' | 'board'
+  mode: 'sub',            // 'sub' | 'board' | 'game'
   tool: 'select',
   activeTexture: null,    // texture path (relative to TextureAssets)
   activePreset: { cubepreset: null, tokenpreset: null, tilepreset: null }, // full docs
   textures: [],           // [{path, name, category}]
   categories: [],
+  models: [],             // [{path, name, category}] — 3D model files (fbx/glb/obj)
+  gameSel: null,          // { kind: 'card'|'char', path, name } — game-assets preview
+  activeMarker: 'checkpoint', // marker type stamped by the Marker tool
   presets: { cubepreset: [], tokenpreset: [], tilepreset: [] }, // full docs
   sub:   { id: null, name: 'Untitled Sub-Board', tags: [], data: newSubData(), dirty: false },
   board: { id: null, name: 'Untitled Board',     tags: [], data: newBoardData(), dirty: false },

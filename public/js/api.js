@@ -9,6 +9,7 @@ async function j(url, opts) {
 
 export const api = {
   textures: () => j('/api/textures'),
+  models: () => j('/api/models'),
 
   upload: (category, filename, dataUrl) =>
     j('/api/upload', {

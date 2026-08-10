@@ -1,8 +1,9 @@
 // App bootstrap and interaction logic.
-import { state, doc, uid, newSubData, newBoardData, nextOverlayOrder } from './state.js';
+import { state, doc, uid, newSubData, newBoardData, nextOverlayOrder, MARKER_TYPES } from './state.js';
 import { api } from './api.js';
 import { View, tileCenter } from './view3d.js';
 import * as UI from './ui.js';
+import * as Tester from './sim/tester.js';
 
 const $ = (id) => document.getElementById(id);
 const view = new View($('viewport'));
@@ -69,6 +70,18 @@ const App = {
     UI.refreshBrowser();
   },
 
+  async reloadModels() {
+    const r = await api.models();
+    state.models = r.models;
+  },
+
+  selectGameAsset(sel) {
+    state.gameSel = sel;
+    UI.refreshGamePanels();
+    UI.refreshGameInfo();
+    view.rebuild();
+  },
+
   async reloadPresets() {
     for (const kind of ['cubepreset', 'tokenpreset', 'tilepreset']) {
       const list = await api.listSaves(kind);
@@ -110,6 +123,8 @@ const App = {
 
 // ------------------------------------------------------------ document title
 function updateTitle() {
+  if (state.mode === 'game') { document.title = 'Game Assets — Map Builder'; return; }
+  if (state.mode === 'tester') { document.title = 'Map Tester — Map Builder'; return; }
   const d = doc();
   $('docName').value = d.name;
   document.title = (d.dirty ? '● ' : '') + d.name + ' — Map Builder';
@@ -125,18 +140,21 @@ const HINTS = {
   label: '<b>Label:</b> pick a texture, click a tile — labels go on top of all layers',
   cube: '<b>Cube:</b> pick a cube preset on the left, then click a tile to place it',
   token: '<b>Token:</b> pick a token preset on the left, then click anywhere on the board',
-  erase: '<b>Erase:</b> click layers, cubes or tokens to remove them',
+  marker: '<b>Marker:</b> pick a marker type on the left, click tiles to toggle it — invisible game data telling the Map Tester where checkpoints, coins, panels and rails are',
+  erase: '<b>Erase:</b> click layers, cubes, tokens or markers to remove them',
   addsub: '',
 };
 
 function setTool(tool) {
   if (tool === 'addsub') { openAddSubBoard(); return; }
   if (tool === 'random') { UI.openRandomizeDialog(); return; }
+  if (tool === 'arrange') { autoArrangeBoard(); return; }
   state.tool = tool;
   document.querySelectorAll('#toolbar .tool').forEach(b =>
     b.classList.toggle('active', b.dataset.tool === tool));
   UI.setHint(HINTS[tool] || '');
   UI.refreshPresetPanel();
+  UI.refreshMarkerPanel();
   UI.autoCategory(tool);
   $('viewport').style.cursor = tool === 'select' ? 'default' : 'crosshair';
 }
@@ -233,7 +251,37 @@ function eraseAt(ev) {
   if (hit.kind === 'overlay') d.overlays = d.overlays.filter(o => o.id !== hit.id);
   else if (hit.kind === 'cube') d.cubes = d.cubes.filter(c => c.id !== hit.id);
   else if (hit.kind === 'token') d.tokens = d.tokens.filter(t => t.id !== hit.id);
+  else if (hit.kind === 'marker') {
+    const key = `${hit.row},${hit.col}`;
+    const arr = d.markers?.[key];
+    if (!arr) return;
+    arr.splice(arr.indexOf(hit.type), 1);
+    if (!arr.length) delete d.markers[key];
+  }
   else return;
+  App.commit();
+}
+
+// toggle the active marker type on a tile; unique markers move instead of duplicating
+function stampMarker(row, col) {
+  const type = state.activeMarker;
+  const def = MARKER_TYPES.find(m => m.id === type);
+  const d = state.sub.data;
+  d.markers = d.markers || {};
+  const key = `${row},${col}`;
+  const arr = d.markers[key] || [];
+  if (arr.includes(type)) {
+    d.markers[key] = arr.filter(t => t !== type);
+    if (!d.markers[key].length) delete d.markers[key];
+  } else {
+    if (def?.unique) {
+      for (const k of Object.keys(d.markers)) {
+        d.markers[k] = d.markers[k].filter(t => t !== type);
+        if (!d.markers[k].length) delete d.markers[k];
+      }
+    }
+    d.markers[key] = [...(d.markers[key] || []), type];
+  }
   App.commit();
 }
 
@@ -268,6 +316,7 @@ function startMoveDragFromSelection(ev) {
 
 $('viewport').addEventListener('pointerdown', (ev) => {
   if (ev.button !== 0) return;
+  if (state.mode === 'game' || state.mode === 'tester') return; // orbit camera only
   $('viewport').setPointerCapture(ev.pointerId);
 
   if (state.mode === 'board') {
@@ -311,6 +360,11 @@ $('viewport').addEventListener('pointerdown', (ev) => {
       if (g) placeToken(g);
       break;
     }
+    case 'marker': {
+      const t = view.pickTile(ev);
+      if (t) stampMarker(t.row, t.col);
+      break;
+    }
     case 'erase': {
       eraseAt(ev);
       break;
@@ -318,6 +372,7 @@ $('viewport').addEventListener('pointerdown', (ev) => {
     case 'select': {
       const hit = view.pick(ev);
       if (!hit) { App.select(null); return; }
+      if (hit.kind === 'marker') { App.select({ kind: 'tile', row: hit.row, col: hit.col }); return; }
       App.select({ kind: hit.kind, id: hit.id, uid: hit.uid, row: hit.row, col: hit.col });
       if (hit.kind !== 'tile') startMoveDragFromSelection(ev); // tiles move via the gizmo only
       break;
@@ -491,15 +546,46 @@ async function refreshBoardRuntime() {
 }
 
 function setMode(mode) {
+  if (state.mode === 'tester' && mode !== 'tester') Tester.stopReplay();
   state.mode = mode;
   state.selection = null;
+  const game = mode === 'game';
+  const tester = mode === 'tester';
   document.querySelectorAll('.mode-tab').forEach(b =>
     b.classList.toggle('active', b.dataset.mode === mode));
   document.querySelectorAll('.sub-only').forEach(e => e.classList.toggle('hidden', mode !== 'sub'));
   document.querySelectorAll('.board-only').forEach(e => e.classList.toggle('hidden', mode !== 'board'));
+  document.querySelectorAll('.game-only').forEach(e => e.classList.toggle('hidden', !game));
+  document.querySelectorAll('.tester-only').forEach(e => e.classList.toggle('hidden', !tester));
   $('gridPanel').classList.toggle('hidden', mode !== 'sub');
   $('sbListPanel').classList.toggle('hidden', mode !== 'board');
   $('layersPanel').classList.toggle('hidden', mode !== 'board' ? false : true);
+  // game & tester modes swap out the map-editing chrome entirely
+  $('toolsPanel').classList.toggle('hidden', game || tester);
+  $('texPanel').classList.toggle('hidden', game || tester);
+  $('propsPanel').classList.toggle('hidden', game || tester);
+  document.querySelector('.doc-controls').classList.toggle('hidden', game || tester);
+  if (game) {
+    setTool('select');
+    UI.setHint('<b>Game Assets:</b> pick a card or character on the left · <b>right-drag</b> rotate · <b>wheel</b> zoom');
+    UI.refreshGamePanels();
+    UI.refreshGameInfo();
+    App.reloadModels().then(() => UI.refreshGamePanels()).catch(() => {});
+    view.rebuild();
+    view.frame(10);
+    updateTitle();
+    return;
+  }
+  if (tester) {
+    setTool('select');
+    UI.setHint('<b>Map Tester:</b> set up players on the left, ▶ Calculate, then replay games from the results panel');
+    UI.refreshPresetPanel();
+    UI.refreshMarkerPanel();
+    UI.refreshLayers();
+    Tester.enterTesterMode().catch(e => UI.toast('Tester: ' + e.message, true));
+    updateTitle();
+    return;
+  }
   syncGridInputs();
   setTool('select');
   view.rebuild();
@@ -525,8 +611,8 @@ async function performSave(name, tags) {
   d.name = name; d.tags = tags;
   let data = d.data;
   if (type === 'board') {
-    data = { subboards: d.data.subboards.map(({ uid: u, saveId, name: n, x, z, rot, sx, sz }) =>
-      ({ uid: u, saveId, name: n, x, z, rot, sx, sz })) };
+    data = { subboards: d.data.subboards.map(({ uid: u, saveId, name: n, x, z, rot, sx, sz, order }) =>
+      ({ uid: u, saveId, name: n, x, z, rot, sx, sz, order: order || null })) };
   }
   try {
     const r = await api.putSave(type, { id: d.id, name, tags, data, thumb: view.captureThumb() });
@@ -537,6 +623,7 @@ async function performSave(name, tags) {
 }
 
 function saveDoc(saveAs = false) {
+  if (state.mode === 'game' || state.mode === 'tester') return;
   const d = doc();
   if (state.mode === 'board' && !d.data.subboards.length) {
     return UI.toast('Add at least one sub-board before saving the board', true);
@@ -546,6 +633,7 @@ function saveDoc(saveAs = false) {
 }
 
 function loadDoc() {
+  if (state.mode === 'game' || state.mode === 'tester') return;
   if (state.mode === 'sub') {
     UI.openSaveBrowser({
       type: 'subboard', title: '📂 Load a sub-board', pickLabel: 'Load',
@@ -579,6 +667,31 @@ function loadDoc() {
   }
 }
 
+// Snap the four sub-boards into the game's pinwheel loop: strips around an
+// empty W×W center (W = strip width), tile 1 left, then clockwise 2/3/4.
+// Matches the hand-built Main_Board layout, centered on the origin.
+function autoArrangeBoard() {
+  const sbs = state.board.data.subboards;
+  if (sbs.length !== 4) {
+    return UI.toast(`Auto-arrange needs exactly 4 sub-boards (board has ${sbs.length})`, true);
+  }
+  const sorted = [...sbs].sort((a, b) =>
+    (a.order || 99) - (b.order || 99) ||
+    a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const g = state.boardRuntime[sorted[0].saveId]?.grid;
+  const W = (g?.cols || 3) * (g?.cell || 5);
+  const slots = [
+    { x: -W,     z: W / 2,  rot: 180 },
+    { x: -W / 2, z: -W,     rot: 270 },
+    { x: W,      z: -W / 2, rot: 0 },
+    { x: W / 2,  z: W,      rot: 90 },
+  ];
+  sorted.forEach((sb, i) => Object.assign(sb, slots[i], { sx: 1, sz: 1, order: i + 1 }));
+  App.commit();
+  view.frame();
+  UI.toast('Sub-boards snapped into the game loop ⊞ (tile 1 → 4 clockwise)');
+}
+
 function openAddSubBoard() {
   UI.openSaveBrowser({
     type: 'subboard', title: '➕ Add a sub-board to this board', pickLabel: 'Add',
@@ -607,6 +720,7 @@ function openAddSubBoard() {
 }
 
 function newDoc() {
+  if (state.mode === 'game' || state.mode === 'tester') return;
   const d = doc();
   if (d.dirty && !confirm('Discard unsaved changes?')) return;
   if (state.mode === 'sub') {
@@ -629,7 +743,7 @@ window.addEventListener('keydown', (ev) => {
   if (ev.ctrlKey && ev.key.toLowerCase() === 'o') { ev.preventDefault(); loadDoc(); return; }
   if (ev.ctrlKey) return;
 
-  const toolKeys = { 1: 'select', 2: 'paint', 3: 'stamp', 4: 'gameplay', 5: 'custom', 6: 'label', 7: 'cube', 8: 'token', 9: 'erase', v: 'select', e: 'erase' };
+  const toolKeys = { 1: 'select', 2: 'paint', 3: 'stamp', 4: 'gameplay', 5: 'custom', 6: 'label', 7: 'cube', 8: 'token', 9: 'erase', v: 'select', e: 'erase', m: 'marker' };
   const k = ev.key.toLowerCase();
   if (toolKeys[k] && (state.mode === 'sub' || toolKeys[k] === 'select')) { setTool(toolKeys[k]); return; }
 
@@ -671,6 +785,8 @@ $('btnSaveAs').addEventListener('click', () => saveDoc(true));
 $('btnLoad').addEventListener('click', loadDoc);
 $('btnHelp').addEventListener('click', UI.openHelp);
 $('btnUpload').addEventListener('click', UI.openUploadDialog);
+$('btnUploadCards').addEventListener('click', UI.openCardUploadDialog);
+$('btnUploadChars').addEventListener('click', UI.openCharUploadDialog);
 $('btnNewPreset').addEventListener('click', () => {
   if (state.tool === 'cube') UI.openCubePresetDialog();
   else if (state.tool === 'token') UI.openTokenPresetDialog();
@@ -711,10 +827,13 @@ applyBg(savedBg);
 // ------------------------------------------------------------ boot
 window.MB = { state, view, App };   // console/debug handle
 UI.initUI(App);
+Tester.initTester(view);
+Tester.wireTesterUI();
 (async () => {
   try {
     await App.reloadTextures();
     await App.reloadPresets();
+    await App.reloadModels();
   } catch (e) {
     UI.toast('Could not reach the server: ' + e.message, true);
   }

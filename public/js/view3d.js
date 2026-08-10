@@ -1,8 +1,9 @@
 // 3D viewport: scene, camera, board rendering, picking.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { texUrl } from './api.js';
-import { state } from './state.js';
+import { state, MARKER_TYPES } from './state.js';
 
 // ------------------------------------------------------------ texture cache
 const loader = new THREE.TextureLoader();
@@ -121,6 +122,54 @@ export function silhouette(path) {
   return p;
 }
 
+// ------------------------------------------------------------ gameplay marker badges
+const markerTexCache = new Map();
+function markerTexture(type) {
+  if (markerTexCache.has(type)) return markerTexCache.get(type);
+  const def = MARKER_TYPES.find(m => m.id === type) || { color: '#888', short: '?' };
+  const c = document.createElement('canvas');
+  c.width = c.height = 96;
+  const ctx = c.getContext('2d');
+  ctx.beginPath();
+  ctx.roundRect(4, 4, 88, 88, 22);
+  ctx.fillStyle = def.color;
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(0,0,0,.45)';
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 38px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(def.short, 48, 50);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  markerTexCache.set(type, t);
+  return t;
+}
+
+// ------------------------------------------------------------ 3D model cache (characters)
+const fbxLoader = new FBXLoader();
+const modelCache = new Map();   // path -> Promise<THREE.Group> (raw, unscaled)
+
+export function loadModel(path) {
+  if (!modelCache.has(path)) {
+    modelCache.set(path, new Promise((resolve, reject) => {
+      fbxLoader.load(texUrl(path), resolve, undefined, reject);
+    }));
+  }
+  return modelCache.get(path);
+}
+
+// height of the cube (if any) under a point — tokens rest on top of cubes
+export function cubeTopAt(data, x, z) {
+  const g = data.grid;
+  const col = Math.floor((x + g.cols * g.cell / 2) / g.cell);
+  const row = Math.floor((z + g.rows * g.cell / 2) / g.cell);
+  const c = data.cubes.find(c => c.row === row && c.col === col);
+  return c ? (c.preset?.height || 5) : 0;
+}
+
 // ------------------------------------------------------------ helpers
 export function tileCenter(grid, row, col) {
   const W = grid.cols * grid.cell, D = grid.rows * grid.cell;
@@ -146,7 +195,9 @@ function decalMesh(texPath, w, h, rotDeg, y, rank) {
 
 // Build a THREE.Group for one sub-board's data.
 // index: Map "kind:key" -> mesh (filled if provided)
-export function buildSubGroup(data, index = null) {
+// opts.skipMovables: leave out half-height cubes (boxes/trains) — the Map
+// Tester renders those as dynamic pieces. opts.skipMarkers hides badges.
+export function buildSubGroup(data, index = null, opts = {}) {
   const g = new THREE.Group();
   const grid = data.grid;
   const W = grid.cols * grid.cell, D = grid.rows * grid.cell;
@@ -221,6 +272,7 @@ export function buildSubGroup(data, index = null) {
   for (const cube of data.cubes) {
     const p = cube.preset || {};
     const h = p.height || 5;
+    if (opts.skipMovables && h < 5) continue;
     const face = (tp) => tp
       ? new THREE.MeshLambertMaterial({ map: getTexture(tp) })
       : new THREE.MeshLambertMaterial({ color: 0x9aa2b5 });
@@ -234,10 +286,33 @@ export function buildSubGroup(data, index = null) {
     index?.set(`cube:${cube.id}`, m);
   }
 
+  // gameplay markers: small corner badges, lifted on top of cubes if present
+  for (const [key, types] of Object.entries(opts.skipMarkers ? {} : data.markers || {})) {
+    const [r, c] = key.split(',').map(Number);
+    if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) continue;
+    const { x, z } = tileCenter(grid, r, c);
+    const cube = data.cubes.find(cb => cb.row === r && cb.col === c);
+    const baseY = (cube ? (cube.preset?.height || 5) : 0) + 0.1;
+    types.forEach((tp, i) => {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.6, 1.6),
+        new THREE.MeshBasicMaterial({ map: markerTexture(tp), transparent: true, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2;
+      const corner = [[-1, -1], [1, -1], [-1, 1], [1, 1]][i % 4];
+      m.position.set(
+        x + corner[0] * (grid.cell / 2 - 1),
+        baseY + Math.floor(i / 4) * 0.02,
+        z + corner[1] * (grid.cell / 2 - 1));
+      m.renderOrder = 500;
+      m.userData = { kind: 'marker', row: r, col: c, type: tp };
+      g.add(m);
+    });
+  }
+
   // tokens: silhouette-shaped pieces (side walls follow the texture outline)
   for (const tk of data.tokens) {
     const grp = new THREE.Group();
-    grp.position.set(tk.x, 0.03, tk.z);
+    grp.position.set(tk.x, cubeTopAt(data, tk.x, tk.z) + 0.03, tk.z);
     grp.rotation.y = -THREE.MathUtils.degToRad(tk.rot || 0);
     grp.scale.set(tk.w, tk.h, tk.l);
     grp.userData = { kind: 'token', id: tk.id };
@@ -342,12 +417,15 @@ export class View {
 
   // ---------------- building
   rebuild() {
+    if (state.mode === 'tester') return;   // content managed by tester.js
     this.content.clear();
     this.index.clear();
     this.sbGroups.clear();
     this.clearHelper();
 
-    if (state.mode === 'sub') {
+    if (state.mode === 'game') {
+      this.buildGamePreview();
+    } else if (state.mode === 'sub') {
       this.content.add(buildSubGroup(state.sub.data, this.index));
     } else {
       for (const sb of state.board.data.subboards) {
@@ -376,13 +454,58 @@ export class View {
     if (g) this.applySbTransform(g, sb);
   }
 
+  // ---------------- game-assets preview (cards & characters)
+  buildGamePreview() {
+    const sel = state.gameSel;
+    const buildId = (this._gameBuildId = (this._gameBuildId || 0) + 1);
+    if (!sel) return;
+
+    // 5×5 cm reference tile so asset scale reads at a glance
+    const tile = new THREE.Mesh(
+      new THREE.BoxGeometry(5, 0.4, 5),
+      new THREE.MeshLambertMaterial({ color: 0x39404f }));
+    tile.position.y = -0.2;
+    this.content.add(tile);
+
+    if (sel.kind === 'card') {
+      // physical card: 63 × 88 mm, standing upright on the tile
+      const mat = new THREE.MeshBasicMaterial({
+        map: getTexture(sel.path), transparent: true, side: THREE.DoubleSide,
+      });
+      const card = new THREE.Mesh(new THREE.PlaneGeometry(6.3, 8.8), mat);
+      card.position.y = 4.4;
+      this.content.add(card);
+      this.frame(10);
+      return;
+    }
+
+    // character model: normalize to ~4.2 cm tall, feet on the tile
+    loadModel(sel.path).then((raw) => {
+      if (buildId !== this._gameBuildId || state.mode !== 'game') return;
+      const model = raw.clone(true);
+      // plain white material until the real character textures are added
+      const white = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
+      model.traverse((o) => { if (o.isMesh) o.material = white; });
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const s = 4.2 / (size.y || 1);
+      model.scale.setScalar(s);
+      const c = box.getCenter(new THREE.Vector3());
+      model.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+      this.content.add(model);
+      this.frame(10);
+    }).catch((e) => console.error('Model load failed:', sel.path, e));
+  }
+
   // fast position update without a rebuild (dragging)
   moveMesh(sel, x, z) {
     const key = sel.kind === 'overlay' ? `overlay:${sel.id}`
       : sel.kind === 'token' ? `token:${sel.id}` : null;
     if (!key) return;
     const m = this.index.get(key);
-    if (m) { m.position.x = x; m.position.z = z; }
+    if (!m) return;
+    m.position.x = x; m.position.z = z;
+    if (sel.kind === 'token') m.position.y = cubeTopAt(state.sub.data, x, z) + 0.03;
   }
 
   // ---------------- selection helper
@@ -473,12 +596,12 @@ export class View {
   }
 
   // ---------------- camera
-  frame() {
+  frame(minSpan = 20) {
     const box = new THREE.Box3().setFromObject(this.content);
     if (box.isEmpty()) return;
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    const span = Math.max(size.x, size.z, 20);
+    const span = Math.max(size.x, size.z, size.y * 1.2, minSpan);
     this.controls.target.copy(center);
     this.camera.position.set(center.x + span * 0.55, span * 1.05, center.z + span * 0.95);
   }
