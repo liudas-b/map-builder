@@ -296,7 +296,7 @@ export function refreshPresetPanel() {
     const card = el('div', {
       class: 'pcard' + (state.activePreset[kind]?.id === p.id ? ' active' : ''),
       title: p.name,
-      onclick: () => { state.activePreset[kind] = p; refreshPresetPanel(); },
+      onclick: () => { state.activePreset[kind] = p; refreshPresetPanel(); App.onPresetChanged?.(); },
     },
       thumbTex ? el('img', { src: texUrl(thumbTex), loading: 'lazy' }) : el('div', { class: 'pname', text: '∅' }),
       el('div', { class: 'pname', text: p.name }),
@@ -327,7 +327,7 @@ export function refreshMarkerPanel() {
   for (const m of MARKER_TYPES) {
     list.append(el('div', {
       class: 'lrow' + (state.activeMarker === m.id ? ' active' : ''),
-      onclick: () => { state.activeMarker = m.id; refreshMarkerPanel(); },
+      onclick: () => { state.activeMarker = m.id; refreshMarkerPanel(); App.onMarkerChanged?.(); },
     },
       el('span', { class: 'marker-chip', style: `background:${m.color}`, text: m.short }),
       el('span', { class: 'lname', text: m.label }),
@@ -1069,10 +1069,18 @@ export function openHelp() {
         </ul>
         <h4>Touch &amp; phones</h4>
         <ul>
-          <li><b>🖐 Look / ✏️ Edit</b> (bottom-left) decides what one finger does: move the camera, or use the current tool.</li>
-          <li><b>Two fingers</b> always pinch to zoom and drag to pan, in either mode.</li>
-          <li>In 🖐 Look, a <b>quick tap</b> still selects — then move it with the ✥ / ⟳ handles.</li>
-          <li><b>☰</b> and <b>⚙</b> in the top bar open the tool and property panels.</li>
+          <li>The <b>dock at the bottom</b> holds everything you need while working:
+            the current <b>tool</b> (tap to change), the <b>palette</b> (texture, preset
+            or marker for that tool), <b>🖐/✏️</b>, <b>⛶</b> frame board, and <b>⌄</b> to
+            hide the dock when showing a board off.</li>
+          <li>The <b>strip</b> above the dock is whatever the tool needs — tap a texture
+            or preset to switch, no panel required.</li>
+          <li><b>🖐 / ✏️</b> decides what one finger does: move the camera, or use the
+            tool. <b>Two fingers</b> always pinch-zoom and pan, in both modes.</li>
+          <li>In 🖐, a <b>quick tap</b> still selects. With something selected the strip
+            becomes its actions: <b>⟳ 90°</b>, <b>⚙</b> properties, <b>🗑</b>, <b>✕</b>.</li>
+          <li><b>☰</b> holds the modes, document actions and the full panels; <b>⚙</b>
+            opens board settings, selection details and layers.</li>
         </ul>
         <h4>Sub-Board Editor</h4>
         <ul>

@@ -115,17 +115,28 @@ the site is ~25 MB rather than 51 MB.
 
 ## Touch controls
 
-On a phone or tablet the layout folds up: **☰** opens the tools / textures
-panel, **⚙** opens settings / selection / layers, and the document actions move
-into the ☰ drawer.
+On a phone the working controls sit in a **dock at the bottom**, in thumb reach,
+rather than in the top bar:
 
-One finger has to be told what to do, so there is a **🖐 Look / ✏️ Edit** toggle
-at the bottom-left of the viewport:
+```
+[ 🎨 Ground ▴ ][ 🖼 ][ 🖐 ][ ⛶ ][ ⌄ ]
+```
 
-- **🖐 Look** — one finger orbits the camera. A quick tap still selects, so you
-  can grab something and move it with the ✥ / ⟳ handles.
-- **✏️ Edit** — one finger paints, stamps, drags and erases with the current tool.
-- **Two fingers** always pinch-zoom and pan, in both modes.
+- **Tool** — tap to open the tool sheet; picking one closes it again.
+- **Palette** — opens the textures, presets or markers for that tool, whichever
+  applies. Above the dock, a **strip** of those same items switches with a
+  single tap, so painting never needs a panel.
+- **🖐 / ✏️** — what one finger does: orbit the camera, or use the tool. Two
+  fingers always pinch-zoom and pan. In 🖐 a quick tap still selects.
+- **⛶** frames the whole board · **⌄** hides the dock for showing a board off.
+
+Select something and the strip becomes its actions — **⟳ 90°**, **⚙**
+properties, **🗑**, **✕** — except while a placing tool is active, where the
+palette stays put so you can place the next one.
+
+**☰** holds the mode tabs, document actions and the full side panels; **⚙**
+opens board settings, selection details and layers. The sheets borrow the real
+panels, so everything behaves exactly as it does on the desktop.
 
 ## Controls
 

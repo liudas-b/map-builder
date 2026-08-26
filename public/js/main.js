@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { View, tileCenter } from './view3d.js';
 import * as UI from './ui.js';
 import * as Tester from './sim/tester.js';
+import * as Mobile from './mobile.js';
 
 const $ = (id) => document.getElementById(id);
 const view = new View($('viewport'));
@@ -15,6 +16,7 @@ const App = {
     view.refreshHelper();
     UI.refreshProps();
     UI.refreshLayers();
+    Mobile.onSelectionChanged();
     if (state.mode === 'board') UI.refreshSbList();
   },
 
@@ -24,6 +26,7 @@ const App = {
     view.rebuild();
     UI.refreshProps();
     UI.refreshLayers();
+    Mobile.onSelectionChanged();
     if (state.mode === 'board') UI.refreshSbList();
     updateTitle();
   },
@@ -95,7 +98,9 @@ const App = {
     UI.refreshPresetPanel();
   },
 
-  onActiveTextureChanged() {},
+  onActiveTextureChanged() { Mobile.onTextureChanged(); },
+  onPresetChanged() { Mobile.onPresetChanged(); },
+  onMarkerChanged() { Mobile.onMarkerChanged(); },
 
   async applyRandomize(picks) {
     const slots = state.board.data.subboards;
@@ -156,6 +161,7 @@ function setTool(tool) {
   UI.refreshPresetPanel();
   UI.refreshMarkerPanel();
   UI.autoCategory(tool);
+  Mobile.onToolChanged();
   $('viewport').style.cursor = tool === 'select' ? 'default' : 'crosshair';
 }
 
@@ -597,6 +603,8 @@ function setMode(mode) {
     UI.refreshSbList();
     refreshBoardRuntime().then(() => { view.rebuild(); view.frame(); });
   }
+  Mobile.sync();
+  Mobile.closeSheet();
   updateTitle();
 }
 
@@ -751,26 +759,29 @@ window.addEventListener('keydown', (ev) => {
   if (k === 'f') { view.frame(); return; }
   if (k === 'escape') { App.select(null); return; }
   if (k === 'delete' || k === 'backspace') { App.deleteSelection(); return; }
-  if (k === 'r') {
-    const s = state.selection;
-    if (!s) return;
-    const d = state.sub.data;
-    const bump = (obj) => { obj.rot = ((obj.rot || 0) + 90) % 360; };
-    if (s.kind === 'overlay') { const o = d.overlays.find(x => x.id === s.id); if (o) { bump(o); App.commit(); } }
-    else if (s.kind === 'cube') { const c = d.cubes.find(x => x.id === s.id); if (c) { bump(c); App.commit(); } }
-    else if (s.kind === 'token') { const t = d.tokens.find(x => x.id === s.id); if (t) { bump(t); App.commit(); } }
-    else if (s.kind === 'tile') { const t = d.tiles[`${s.row},${s.col}`]; if (t) { bump(t); App.commit(); } }
-    else if (s.kind === 'sb') {
-      const sb = state.board.data.subboards.find(x => x.uid === s.uid);
-      if (sb) { bump(sb); App.commitBoardTransform(sb); UI.refreshProps(); }
-    }
-  }
+  if (k === 'r') rotateSelection();
 });
+
+function rotateSelection() {
+  const s = state.selection;
+  if (!s) return;
+  const d = state.sub.data;
+  const bump = (obj) => { obj.rot = ((obj.rot || 0) + 90) % 360; };
+  if (s.kind === 'overlay') { const o = d.overlays.find(x => x.id === s.id); if (o) { bump(o); App.commit(); } }
+  else if (s.kind === 'cube') { const c = d.cubes.find(x => x.id === s.id); if (c) { bump(c); App.commit(); } }
+  else if (s.kind === 'token') { const t = d.tokens.find(x => x.id === s.id); if (t) { bump(t); App.commit(); } }
+  else if (s.kind === 'tile') { const t = d.tiles[`${s.row},${s.col}`]; if (t) { bump(t); App.commit(); } }
+  else if (s.kind === 'sb') {
+    const sb = state.board.data.subboards.find(x => x.uid === s.uid);
+    if (sb) { bump(sb); App.commitBoardTransform(sb); UI.refreshProps(); }
+  }
+}
 
 // ------------------------------------------------------------ topbar wiring
 document.querySelectorAll('.mode-tab').forEach(b =>
   b.addEventListener('click', () => {
     if (b.dataset.mode !== state.mode) setMode(b.dataset.mode);
+    if (narrow.matches) closeDrawers();
   }));
 document.querySelectorAll('#toolbar .tool').forEach(b =>
   b.addEventListener('click', () => setTool(b.dataset.tool)));
@@ -837,6 +848,7 @@ const coarse = matchMedia('(pointer: coarse)').matches;
 const narrow = matchMedia('(max-width: 900px)');
 
 function setDrawer(side, open) {
+  if (open) Mobile.closeSheet();
   document.body.classList.toggle('drawer-' + side, open);
   if (open) document.body.classList.remove('drawer-' + (side === 'left' ? 'right' : 'left'));
 }
@@ -865,9 +877,11 @@ function placeDocControls() {
   docsInDrawer = narrow.matches;
   if (docsInDrawer) {
     $('leftPanel').prepend(docPanel);
+    docPanel.insertBefore($('modeTabs'), docRow);
     docRow.append($('btnNew'), $('btnSaveAs'), $('btnLoad'), $('btnHelp'));
   } else {
     docPanel.remove();
+    $('topbar').insertBefore($('modeTabs'), document.querySelector('.doc-controls'));
     document.querySelector('.doc-controls').append($('btnNew'), $('btnSave'), $('btnSaveAs'), $('btnLoad'));
     $('topbar').insertBefore($('btnHelp'), $('btnRightDrawer'));
   }
@@ -882,20 +896,29 @@ document.querySelectorAll('#toolbar .tool').forEach(b =>
 
 let touchCamera = coarse;   // mouse users always edit with the left button
 
-function setTouchMode(camera) {
+function setTouchMode(camera, quiet = false) {
   touchCamera = camera;
   view.setTouchOrbit(camera);
   $('btnTouchCam').classList.toggle('active', camera);
   $('btnTouchEdit').classList.toggle('active', !camera);
-  UI.toast(camera ? '🖐 One finger moves the camera' : '✏️ One finger uses the tool — two fingers move the camera');
+  Mobile.setTouchModeIcon(camera);
+  if (!quiet) {
+    UI.toast(camera ? '🖐 One finger moves the camera' : '✏️ One finger uses the tool — two fingers move the camera');
+  }
 }
 $('btnTouchCam').addEventListener('click', () => setTouchMode(true));
 $('btnTouchEdit').addEventListener('click', () => setTouchMode(false));
 
+Mobile.initMobile({
+  App, view,
+  rotateSelection,
+  toggleTouchMode: () => setTouchMode(!touchCamera),
+  openDrawer: (side) => setDrawer(side, true),
+});
+
 if (coarse) {
-  $('touchMode').classList.remove('hidden');
-  view.setTouchOrbit(true);
-  $('btnTouchCam').classList.add('active');
+  $('touchMode').classList.remove('hidden');   // hidden by CSS on phones: the dock has it
+  setTouchMode(true, true);
 }
 
 // In camera mode a quick tap still selects, so you can grab something and move
