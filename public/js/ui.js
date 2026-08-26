@@ -1099,8 +1099,8 @@ export function openHelp() {
         <h4>Selection &amp; handles</h4>
         <ul>
           <li>With <b>Select</b>, click anything — <b>✥ move</b> and <b>⟳ rotate</b> handles appear above it.</li>
-          <li>Drag <b>⟳</b> to rotate: ground, gameplay, labels and cubes snap to 90°; customization art and tokens rotate freely (hold <kbd>Ctrl</kbd> for 15° steps).</li>
-          <li>Drag <b>✥</b> to move — ground paint and tile layers hop between tiles, art and tokens move freely.</li>
+          <li><b>Tap ⟳</b> to turn it 90°. <b>Drag ⟳</b> in a circle for free rotation instead: ground, gameplay, labels and cubes still snap to 90°; customization art and tokens turn freely (hold <kbd>Ctrl</kbd> for 15° steps).</li>
+          <li><b>Hold ✥ and drag</b> to move — ground paint and tile layers hop between tiles, art and tokens move freely.</li>
           <li><kbd>R</kbd> — rotate 90° &nbsp;·&nbsp; <kbd>Del</kbd> — delete &nbsp;·&nbsp; <kbd>Esc</kbd> — deselect</li>
           <li>The <b>Layers</b> panel shows the selected tile's stack — reorder with ▲▼.</li>
         </ul>

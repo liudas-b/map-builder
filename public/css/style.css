@@ -297,6 +297,7 @@ body {
 }
 #gizmo button {
   pointer-events: auto;
+  touch-action: none;          /* a finger drag here moves the object, not the page */
   width: 34px; height: 34px; border-radius: 50%;
   border: 2px solid #ffc84f; background: rgba(16,18,24,.88); color: #ffc84f;
   font-size: 17px; cursor: grab; display: flex; align-items: center; justify-content: center;

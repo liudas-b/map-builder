@@ -496,32 +496,45 @@ function updateGizmo() {
 }
 updateGizmo();
 
+// Hold ✥ and drag: the selection follows the pointer until you let go. The
+// button captures the pointer so a finger dragging off it keeps steering the
+// move instead of the browser stealing the gesture.
 $('gizMove').addEventListener('pointerdown', (ev) => {
   ev.preventDefault(); ev.stopPropagation();
   if (!startMoveDragFromSelection(ev)) return;
+  const btn = $('gizMove');
+  try { btn.setPointerCapture(ev.pointerId); } catch { /* pointer already gone */ }
   const move = (e) => handleDragMove(e);
   const up = () => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', up);
+    btn.removeEventListener('pointermove', move);
+    btn.removeEventListener('pointerup', up);
+    btn.removeEventListener('pointercancel', up);
     finishDrag();
   };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up);
+  btn.addEventListener('pointermove', move);
+  btn.addEventListener('pointerup', up);
+  btn.addEventListener('pointercancel', up);
 });
 
+// Tap ⟳ to turn one 90° step; drag it in a circle for free / fine rotation.
 $('gizRotate').addEventListener('pointerdown', (ev) => {
   ev.preventDefault(); ev.stopPropagation();
   const sel = state.selection;
   const item = selItem();
   if (!sel || !item) return;
+  const btn = $('gizRotate');
+  try { btn.setPointerCapture(ev.pointerId); } catch { /* pointer already gone */ }
   const r = $('viewport').getBoundingClientRect();
   const c = view.selectionScreenPos(sel);
   if (!c) return;
   const angAt = (e) => Math.atan2((e.clientY - r.top) - c.y, (e.clientX - r.left) - c.x) * 180 / Math.PI;
   const startAng = angAt(ev);
   const startRot = item.rot || 0;
-  let changed = false;
+  let changed = false, dragging = false;
   const move = (e) => {
+    // a tap wobbles a few pixels; only a real circular drag starts rotating
+    if (!dragging && Math.hypot(e.clientX - ev.clientX, e.clientY - ev.clientY) < 8) return;
+    dragging = true;
     const snap = rotSnap(sel, e.ctrlKey);
     let deg = startRot + (angAt(e) - startAng);
     deg = Math.round(deg / snap) * snap;
@@ -533,14 +546,17 @@ $('gizRotate').addEventListener('pointerdown', (ev) => {
     else view.rotateMesh(sel, deg);
   };
   const up = () => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', up);
+    btn.removeEventListener('pointermove', move);
+    btn.removeEventListener('pointerup', up);
+    btn.removeEventListener('pointercancel', up);
+    if (!dragging) return rotateSelection();   // plain tap: one step
     if (!changed) return;
     if (sel.kind === 'sb') { state.board.dirty = true; updateTitle(); UI.refreshProps(); }
     else App.commit();
   };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up);
+  btn.addEventListener('pointermove', move);
+  btn.addEventListener('pointerup', up);
+  btn.addEventListener('pointercancel', up);
 });
 
 // ------------------------------------------------------------ mode switching
