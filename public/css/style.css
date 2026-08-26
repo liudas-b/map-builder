@@ -230,7 +230,7 @@ body {
 
 /* ---------- viewport ---------- */
 #viewportWrap { flex: 1; position: relative; min-width: 0; }
-#viewport { width: 100%; height: 100%; display: block; outline: none; }
+#viewport { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
 #hintbar {
   position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
   background: rgba(16,18,24,.85); border: 1px solid var(--line);
@@ -380,3 +380,134 @@ kbd {
 ::-webkit-scrollbar-thumb { background: #333a49; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #414a5e; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   Touch & small screens
+   ============================================================ */
+
+/* taps should act immediately, never zoom the page */
+.tb, .tool, .mode-tab, .tex-item, .lrow, .pcard, .slot, button, select, input {
+  touch-action: manipulation;
+}
+
+/* the drawer toggles and the collapsed-label icons are desktop-hidden */
+.drawer-btn { display: none; }
+.lbl-icon { display: none; }
+#drawerScrim { display: none; }
+
+/* which job one finger has in the viewport: camera or the current tool */
+#touchMode {
+  position: absolute; left: 12px; bottom: 12px; z-index: 46;
+  display: flex; gap: 4px; padding: 4px;
+  background: rgba(16,18,24,.9); border: 1px solid var(--line);
+  border-radius: 999px; backdrop-filter: blur(5px);
+}
+#touchMode button {
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px;
+  cursor: pointer; white-space: nowrap;
+}
+#touchMode button.active { background: var(--accent); color: #fff; }
+
+/* a save that lives in this browser rather than on the server */
+.stag.local { background: #2c4a3a; color: #93e6b5; }
+.mode-note {
+  background: #22303f; border: 1px solid #2f4a63; color: #a9c3f5;
+  border-radius: 8px; padding: 7px 9px; font-size: 11.5px; line-height: 1.45;
+}
+
+/* bigger hit targets wherever there is no mouse */
+@media (pointer: coarse) {
+  .tool { padding: 10px 9px; font-size: 13px; }
+  .tb { padding: 9px 12px; }
+  .lrow { padding: 8px 7px; }
+  .lrow .mini { padding: 6px 7px; font-size: 14px; }
+  #gizmo button { width: 46px; height: 46px; font-size: 21px; }
+  .pcard .pdel { display: block; padding: 5px 8px; font-size: 13px; }
+  .modal-close { font-size: 26px; padding: 4px 8px; }
+  #replayControls .tb { padding: 8px 12px; }
+}
+
+@media (max-width: 900px) {
+  /* ---- top bar: one compact row, mode tabs scroll on a second row ---- */
+  #topbar { flex-wrap: wrap; gap: 5px; padding: 6px 8px; }
+  .brand { font-size: 18px; }
+  .brand span { display: none; }
+  .lbl { display: none; }
+  .lbl-icon { display: inline; }
+  .spacer, .bg-controls { display: none; }
+  .drawer-btn { display: block; }
+  .doc-controls { flex: 1 1 auto; min-width: 0; gap: 4px; }
+  /* the document actions live in the drawer down here, with their labels back */
+  #docPanel .btn-row { gap: 6px; }
+  #docPanel .tb { flex: 1 1 45%; padding: 10px 8px; }
+  #docPanel .lbl { display: inline; }
+  #docPanel .lbl-icon { display: none; }
+  #docName { width: auto; flex: 1 1 60px; min-width: 60px; padding: 8px; }
+  #modeTabs {
+    order: 10; flex: 1 0 100%; overflow-x: auto; justify-content: flex-start;
+    scrollbar-width: none;
+  }
+  #modeTabs::-webkit-scrollbar { display: none; }
+  .mode-tab { white-space: nowrap; padding: 8px 13px; }
+
+  /* ---- side panels become drawers over the viewport ---- */
+  #workspace { position: relative; }
+  #leftPanel, #rightPanel {
+    position: absolute; top: 0; bottom: 0; z-index: 60;
+    width: min(320px, 86vw); flex-basis: auto;
+    box-shadow: 0 0 40px rgba(0,0,0,.6);
+    transition: transform .22s ease;
+  }
+  #leftPanel  { left: 0;  transform: translateX(-101%); }
+  #rightPanel { right: 0; transform: translateX(101%); }
+  body.drawer-left  #leftPanel  { transform: none; }
+  body.drawer-right #rightPanel { transform: none; }
+
+  #drawerScrim {
+    display: block; position: absolute; inset: 0; z-index: 55;
+    background: rgba(5,7,10,.55);
+    opacity: 0; pointer-events: none; transition: opacity .2s ease;
+  }
+  body.drawer-left #drawerScrim,
+  body.drawer-right #drawerScrim { opacity: 1; pointer-events: auto; }
+
+  /* ---- viewport overlays have far less room ---- */
+  #hintbar {
+    left: 8px; right: 8px; bottom: 8px; transform: none;
+    white-space: normal; text-align: center; font-size: 11px; padding: 6px 10px;
+  }
+  #touchMode { bottom: 8px; left: 8px; }
+  body.has-hintbar #touchMode { bottom: 48px; }
+  #playerAid { width: min(230px, 46vw); top: 8px; right: 8px; padding: 5px; }
+  #aidHead { font-size: 10.5px; }
+
+  #replayBar { left: 6px; right: 6px; bottom: 6px; padding: 6px 8px; }
+  #replayControls { flex-wrap: wrap; gap: 4px; }
+  #replayControls .tb { padding: 7px 9px; }
+  #replayCards { min-height: 52px; }
+  #replayCards img { height: 48px; }
+  #cardPreview { width: 200px; }
+
+  /* ---- dialogs ---- */
+  .modal { width: 94vw; max-height: 86vh; }
+  .modal.narrow { width: 94vw; }
+  .modal-float {
+    position: fixed; right: 3vw; left: 3vw; top: 60px; width: auto;
+    max-height: 74vh;
+  }
+  .modal-head { padding: 11px 13px; }
+  .modal-body { padding: 11px 13px; }
+  .modal-foot { padding: 10px 13px; }
+  .help-cols { grid-template-columns: 1fr; }
+  .save-toolbar { flex-wrap: wrap; }
+  .save-toolbar input[type=search] { flex: 1 0 100%; }
+  .save-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+}
+
+/* phones held upright: the drawer takes the full width */
+@media (max-width: 420px) {
+  #leftPanel, #rightPanel { width: 92vw; }
+  #toolbar { grid-template-columns: 1fr; }
+  .tex-grid { grid-template-columns: repeat(4, 1fr); }
+}

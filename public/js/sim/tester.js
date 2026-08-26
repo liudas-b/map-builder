@@ -456,6 +456,8 @@ function buildTimeline() {
   });
 }
 
+const coarsePointer = matchMedia('(pointer: coarse)').matches;
+
 function buildCardStrip() {
   const rp = replay;
   const strip = $('replayCards');
@@ -467,16 +469,26 @@ function buildCardStrip() {
     img.src = texUrl(cardArt(ev.card));
     img.title = `Turn ${ev.turn}: Seat ${ev.p + 1} plays ${ev.card} — click to jump`;
     img.dataset.idx = i;
-    img.addEventListener('click', () => { pause(); applyEvent(i); });
-    img.addEventListener('mouseenter', () => {
+    const showPreview = () => {
       preview.src = img.src;
-      const r = img.getBoundingClientRect();
       preview.classList.remove('hidden');
-      const w = 280;
+      const r = img.getBoundingClientRect();
+      const w = preview.offsetWidth || 280;
       preview.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
       preview.style.bottom = (window.innerHeight - r.top + 10) + 'px';
+    };
+    img.addEventListener('click', () => {
+      pause();
+      applyEvent(i);
+      // no hover on a touch screen: the tap shows the card for a moment
+      if (coarsePointer) {
+        showPreview();
+        clearTimeout(preview._timer);
+        preview._timer = setTimeout(() => preview.classList.add('hidden'), 1600);
+      }
     });
-    img.addEventListener('mouseleave', () => preview.classList.add('hidden'));
+    img.addEventListener('mouseenter', showPreview);
+    img.addEventListener('mouseleave', () => { if (!coarsePointer) preview.classList.add('hidden'); });
     strip.append(img);
   });
 }

@@ -60,6 +60,73 @@ All textures live in `TextureAssets/`, categorized by folder. Upload new ones
 from the app (⬆ Upload textures) into any existing or new category — they are
 written into `TextureAssets/` and show up in the browser immediately.
 
+## On a phone: the web build
+
+The same app can be published as a **static site** — no server, no Python, no
+PC left running. GitHub Actions builds it on every push to `main` and GitHub
+Pages hosts it, so a phone anywhere just opens a URL.
+
+What changes in that build:
+
+- Textures, models, sub-boards, boards and presets are **baked in and
+  read-only** — they come from `data/manifest.json` instead of the API.
+- Anything you save there is kept **in that browser**, on that device, and is
+  labelled *📱 on this device* in the Load browser.
+- **⤓** downloads any save as `.json` and **📥 Import save…** brings one back
+  in — that is how work moves between a phone and this desktop app (drop the
+  file into `saves/subboard/` here, or import it there).
+- Texture upload is hidden: there is nowhere to write files to.
+
+### Enabling it on GitHub (one time)
+
+1. Push this repo to GitHub (`main` branch) with `.github/` and `tools/`
+   included.
+2. On github.com open the repo → **Settings** → **Pages**.
+3. Under **Build and deployment → Source**, pick **GitHub Actions**. Do *not*
+   pick "Deploy from a branch" — that mode serves the repo as-is and would
+   publish Git LFS pointer files instead of the textures.
+4. Open the **Actions** tab. The `Deploy Map Builder to Pages` workflow runs on
+   every push that touches `public/`, `TextureAssets/`, `saves/`, `server.py`
+   or the build script; press **Run workflow** to trigger it by hand.
+5. When it finishes, the URL appears on Settings → Pages, and in the workflow's
+   `deploy` job. For this repo it is
+   `https://<user>.github.io/map-builder/`.
+
+Notes:
+
+- **Private repos need GitHub Pro** for Pages. A public repo works on the free
+  plan.
+- The workflow checks out with `lfs: true` and fails loudly if any LFS pointer
+  reaches `dist/`, because the art (`*.png`, `*.jpg`) is LFS-tracked.
+- Each build pulls ~25 MB of LFS objects, which counts against the free 1 GB /
+  month LFS bandwidth — roughly 40 deploys a month.
+- To update the published boards, save them here and push: the deploy is the
+  only step.
+
+### Building it locally
+
+```bash
+python tools/build_static.py          # writes dist/
+python -m http.server -d dist 8422    # then open http://localhost:8422
+```
+
+`dist/` is git-ignored. Source art (`.ai`, `.psd`) is left out of the build, so
+the site is ~25 MB rather than 51 MB.
+
+## Touch controls
+
+On a phone or tablet the layout folds up: **☰** opens the tools / textures
+panel, **⚙** opens settings / selection / layers, and the document actions move
+into the ☰ drawer.
+
+One finger has to be told what to do, so there is a **🖐 Look / ✏️ Edit** toggle
+at the bottom-left of the viewport:
+
+- **🖐 Look** — one finger orbits the camera. A quick tap still selects, so you
+  can grab something and move it with the ✥ / ⟳ handles.
+- **✏️ Edit** — one finger paints, stamps, drags and erases with the current tool.
+- **Two fingers** always pinch-zoom and pan, in both modes.
+
 ## Controls
 
 - **Right-drag** rotate · **middle-drag** pan · **wheel** zoom · `F` frame board

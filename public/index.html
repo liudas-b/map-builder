@@ -2,21 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a1d26">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Map Builder</title>
-<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="css/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🗺️</text></svg>">
 <script type="importmap">
 { "imports": {
-    "three": "/lib/three.module.min.js",
-    "three/addons/controls/OrbitControls.js": "/lib/OrbitControls.js",
-    "three/addons/loaders/FBXLoader.js": "/lib/loaders/FBXLoader.js"
+    "three": "./lib/three.module.min.js",
+    "three/addons/controls/OrbitControls.js": "./lib/OrbitControls.js",
+    "three/addons/loaders/FBXLoader.js": "./lib/loaders/FBXLoader.js"
 } }
 </script>
 </head>
 <body>
 
 <header id="topbar">
+  <button id="btnLeftDrawer" class="tb drawer-btn" title="Tools, presets and textures" aria-label="Open tools panel">☰</button>
   <div class="brand">🗺️ <span>Map Builder</span></div>
 
   <nav id="modeTabs">
@@ -28,10 +31,10 @@
 
   <div class="doc-controls">
     <input id="docName" type="text" spellcheck="false" value="Untitled Sub-Board" title="Name of the current document">
-    <button id="btnNew"    class="tb" title="Start a fresh document">✨ New</button>
-    <button id="btnSave"   class="tb primary" title="Save (Ctrl+S)">💾 Save</button>
-    <button id="btnSaveAs" class="tb" title="Save a copy under a new name">Save As…</button>
-    <button id="btnLoad"   class="tb" title="Browse and load saved documents (Ctrl+O)">📂 Load</button>
+    <button id="btnNew"    class="tb" title="Start a fresh document">✨ <span class="lbl">New</span></button>
+    <button id="btnSave"   class="tb primary" title="Save (Ctrl+S)">💾 <span class="lbl">Save</span></button>
+    <button id="btnSaveAs" class="tb" title="Save a copy under a new name"><span class="lbl">Save As…</span><span class="lbl-icon">💾+</span></button>
+    <button id="btnLoad"   class="tb" title="Browse and load saved documents (Ctrl+O)">📂 <span class="lbl">Load</span></button>
   </div>
 
   <div class="spacer"></div>
@@ -49,10 +52,13 @@
     </select>
     <input id="bgColor" type="color" value="#14161c" title="Pick any background color">
   </div>
-  <button id="btnHelp" class="tb" title="Controls &amp; help">❓ Help</button>
+  <button id="btnHelp" class="tb" title="Controls &amp; help">❓ <span class="lbl">Help</span></button>
+  <button id="btnRightDrawer" class="tb drawer-btn" title="Settings, selection and layers" aria-label="Open properties panel">⚙</button>
 </header>
 
 <div id="workspace">
+
+  <div id="drawerScrim"></div>
 
   <!-- ============ LEFT: tools + presets + textures ============ -->
   <aside id="leftPanel">
@@ -131,6 +137,10 @@
       <button id="gizMove" title="Drag to move">✥</button>
       <button id="gizRotate" title="Drag to rotate (hold Ctrl for 15° steps)">⟳</button>
     </div>
+    <div id="touchMode" class="hidden">
+      <button id="btnTouchCam" class="active" title="One finger moves the camera">🖐 Look</button>
+      <button id="btnTouchEdit" title="One finger uses the current tool">✏️ Edit</button>
+    </div>
     <div id="hintbar"></div>
     <div id="toast" class="hidden"></div>
 
@@ -138,7 +148,7 @@
     <div id="playerAid" class="hidden">
       <div id="aidHead"></div>
       <div id="aidWrap">
-        <img id="aidImg" src="/assets/PlayerAid.png" alt="Player aid">
+        <img id="aidImg" src="assets/PlayerAid.png" alt="Player aid">
         <div id="aidDots"></div>
       </div>
     </div>
@@ -212,6 +222,6 @@
 
 <div id="modalRoot"></div>
 
-<script type="module" src="/js/main.js"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>

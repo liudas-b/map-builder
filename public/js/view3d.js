@@ -372,6 +372,9 @@ export class View {
       MIDDLE: THREE.MOUSE.PAN,
       RIGHT: THREE.MOUSE.ROTATE,
     };
+    // Touch mirrors that split: two fingers always drive the camera, and one
+    // finger belongs to the tools unless setTouchOrbit() hands it over.
+    this.controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN };
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.6));
     const dir = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -604,6 +607,14 @@ export class View {
     const span = Math.max(size.x, size.z, size.y * 1.2, minSpan);
     this.controls.target.copy(center);
     this.camera.position.set(center.x + span * 0.55, span * 1.05, center.z + span * 0.95);
+  }
+
+  // One-finger drag: camera when true, current tool when false.
+  setTouchOrbit(on) {
+    this.controls.touches = {
+      ONE: on ? THREE.TOUCH.ROTATE : null,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
   }
 
   captureThumb() {

@@ -317,6 +317,7 @@ function startMoveDragFromSelection(ev) {
 $('viewport').addEventListener('pointerdown', (ev) => {
   if (ev.button !== 0) return;
   if (state.mode === 'game' || state.mode === 'tester') return; // orbit camera only
+  if (touchCamera && ev.pointerType !== 'mouse') return;        // finger belongs to the camera
   $('viewport').setPointerCapture(ev.pointerId);
 
   if (state.mode === 'board') {
@@ -784,9 +785,14 @@ $('btnSave').addEventListener('click', () => saveDoc(false));
 $('btnSaveAs').addEventListener('click', () => saveDoc(true));
 $('btnLoad').addEventListener('click', loadDoc);
 $('btnHelp').addEventListener('click', UI.openHelp);
-$('btnUpload').addEventListener('click', UI.openUploadDialog);
-$('btnUploadCards').addEventListener('click', UI.openCardUploadDialog);
-$('btnUploadChars').addEventListener('click', UI.openCharUploadDialog);
+if (api.canUpload) {
+  $('btnUpload').addEventListener('click', UI.openUploadDialog);
+  $('btnUploadCards').addEventListener('click', UI.openCardUploadDialog);
+  $('btnUploadChars').addEventListener('click', UI.openCharUploadDialog);
+} else {
+  // the static build has no server to store files on
+  for (const id of ['btnUpload', 'btnUploadCards', 'btnUploadChars']) $(id).classList.add('hidden');
+}
 $('btnNewPreset').addEventListener('click', () => {
   if (state.tool === 'cube') UI.openCubePresetDialog();
   else if (state.tool === 'token') UI.openTokenPresetDialog();
@@ -823,6 +829,95 @@ $('bgColor').addEventListener('input', () => {
 if ([...$('bgSelect').options].some(o => o.value === savedBg)) $('bgSelect').value = savedBg;
 else $('bgSelect').value = 'custom';
 applyBg(savedBg);
+
+// ------------------------------------------------------------ phone layout
+// Narrow screens turn the side panels into drawers, and one finger has to be
+// told what it is for: moving the camera, or using the current tool.
+const coarse = matchMedia('(pointer: coarse)').matches;
+const narrow = matchMedia('(max-width: 900px)');
+
+function setDrawer(side, open) {
+  document.body.classList.toggle('drawer-' + side, open);
+  if (open) document.body.classList.remove('drawer-' + (side === 'left' ? 'right' : 'left'));
+}
+function closeDrawers() {
+  document.body.classList.remove('drawer-left', 'drawer-right');
+}
+$('btnLeftDrawer').addEventListener('click', () =>
+  setDrawer('left', !document.body.classList.contains('drawer-left')));
+$('btnRightDrawer').addEventListener('click', () =>
+  setDrawer('right', !document.body.classList.contains('drawer-right')));
+$('drawerScrim').addEventListener('click', closeDrawers);
+
+// A phone top bar only has room for the name and Save, so the rest of the
+// document actions move into the tools drawer while the screen is narrow.
+const docPanel = document.createElement('section');
+docPanel.className = 'panel';
+docPanel.id = 'docPanel';
+docPanel.innerHTML = '<h3>Document</h3>';
+const docRow = document.createElement('div');
+docRow.className = 'btn-row';
+docPanel.append(docRow);
+
+let docsInDrawer = null;
+function placeDocControls() {
+  if (narrow.matches === docsInDrawer) return;
+  docsInDrawer = narrow.matches;
+  if (docsInDrawer) {
+    $('leftPanel').prepend(docPanel);
+    docRow.append($('btnNew'), $('btnSaveAs'), $('btnLoad'), $('btnHelp'));
+  } else {
+    docPanel.remove();
+    document.querySelector('.doc-controls').append($('btnNew'), $('btnSave'), $('btnSaveAs'), $('btnLoad'));
+    $('topbar').insertBefore($('btnHelp'), $('btnRightDrawer'));
+  }
+}
+placeDocControls();
+narrow.addEventListener('change', () => { closeDrawers(); placeDocControls(); });
+window.addEventListener('resize', placeDocControls);   // belt and braces on rotate
+
+// picking a tool means you want the board: get out of the way
+document.querySelectorAll('#toolbar .tool').forEach(b =>
+  b.addEventListener('click', () => { if (narrow.matches) closeDrawers(); }));
+
+let touchCamera = coarse;   // mouse users always edit with the left button
+
+function setTouchMode(camera) {
+  touchCamera = camera;
+  view.setTouchOrbit(camera);
+  $('btnTouchCam').classList.toggle('active', camera);
+  $('btnTouchEdit').classList.toggle('active', !camera);
+  UI.toast(camera ? '🖐 One finger moves the camera' : '✏️ One finger uses the tool — two fingers move the camera');
+}
+$('btnTouchCam').addEventListener('click', () => setTouchMode(true));
+$('btnTouchEdit').addEventListener('click', () => setTouchMode(false));
+
+if (coarse) {
+  $('touchMode').classList.remove('hidden');
+  view.setTouchOrbit(true);
+  $('btnTouchCam').classList.add('active');
+}
+
+// In camera mode a quick tap still selects, so you can grab something and move
+// it with the gizmo without leaving the camera.
+let tap = null;
+$('viewport').addEventListener('pointerdown', (ev) => {
+  tap = (touchCamera && ev.pointerType !== 'mouse' && ev.isPrimary)
+    ? { x: ev.clientX, y: ev.clientY, t: performance.now(), id: ev.pointerId }
+    : null;
+});
+$('viewport').addEventListener('pointerup', (ev) => {
+  const t = tap;
+  tap = null;
+  if (!t || ev.pointerId !== t.id) return;
+  if (performance.now() - t.t > 400) return;
+  if (Math.hypot(ev.clientX - t.x, ev.clientY - t.y) > 10) return;
+  if (state.mode === 'game' || state.mode === 'tester' || state.tool !== 'select') return;
+  const hit = view.pick(ev);
+  if (!hit) return App.select(null);
+  if (hit.kind === 'marker') return App.select({ kind: 'tile', row: hit.row, col: hit.col });
+  App.select({ kind: hit.kind, id: hit.id, uid: hit.uid, row: hit.row, col: hit.col });
+});
 
 // ------------------------------------------------------------ boot
 window.MB = { state, view, App };   // console/debug handle

@@ -1,6 +1,6 @@
 // All DOM UI: panels, texture browser, presets, modals, save browser.
 import { state, doc, uid, nextOverlayOrder, MARKER_TYPES } from './state.js';
-import { api, texUrl } from './api.js';
+import { api, texUrl, isStatic, downloadSave, importSaveFile } from './api.js';
 
 let App = null;
 let textureClickHook = null;   // when set, texture clicks go to a dialog slot
@@ -31,7 +31,10 @@ export function toast(msg, isErr = false) {
   t._timer = setTimeout(() => t.classList.add('hidden'), 2400);
 }
 
-export function setHint(html) { $('hintbar').innerHTML = html; }
+export function setHint(html) {
+  $('hintbar').innerHTML = html;
+  document.body.classList.toggle('has-hintbar', !!html);
+}
 
 // ------------------------------------------------------------ modals
 export function openModal({ title, body, foot, narrow = false, floating = false, onClose }) {
@@ -302,8 +305,10 @@ export function refreshPresetPanel() {
         onclick: async (e) => {
           e.stopPropagation();
           if (!confirm(`Delete preset "${p.name}"?`)) return;
-          await api.deleteSave(kind, p.id);
-          await App.reloadPresets();
+          try {
+            await api.deleteSave(kind, p.id);
+            await App.reloadPresets();
+          } catch (err) { toast(err.message, true); }
         },
       }));
     list.append(card);
@@ -483,27 +488,59 @@ export function openSaveBrowser({ type, title, pickLabel, onPick }) {
         el('div', { class: 'sbody' },
           el('div', { class: 'sname', text: s.name }),
           el('div', { class: 'sdate', text: 'Modified ' + date }),
-          el('div', { class: 'stags' }, ...(s.tags || []).map(t => el('span', { class: 'stag', text: t })))),
+          el('div', { class: 'stags' },
+            isStatic && s.local ? el('span', { class: 'stag local', text: '📱 on this device' }) : null,
+            ...(s.tags || []).map(t => el('span', { class: 'stag', text: t })))),
         el('div', { class: 'sbtns' },
           el('button', { class: 'tb primary', text: pickLabel, onclick: () => { close(); onPick(s); } }),
           el('button', {
+            class: 'tb', text: '⤓', title: 'Download this save as a .json file',
+            onclick: async () => {
+              try { downloadSave(await api.getSave(type, s.id)); }
+              catch (e) { toast('Export failed: ' + e.message, true); }
+            },
+          }),
+          api.isWritable(s) ? el('button', {
             class: 'tb danger', text: '🗑', title: 'Delete this save',
             onclick: async () => {
               if (!confirm(`Delete "${s.name}"? This cannot be undone.`)) return;
-              await api.deleteSave(type, s.id);
-              saves = saves.filter(x => x.id !== s.id);
-              render();
+              try {
+                await api.deleteSave(type, s.id);
+                saves = saves.filter(x => x.id !== s.id);
+                render();
+              } catch (e) { toast(e.message, true); }
             },
-          }))));
+          }) : null)));
     }
   };
   search.addEventListener('input', render);
   sort.addEventListener('change', render);
   tagSel.addEventListener('change', render);
 
+  const importer = el('input', { type: 'file', accept: 'application/json,.json', multiple: 'multiple', class: 'hidden' });
+  importer.addEventListener('change', async () => {
+    const files = [...importer.files];
+    importer.value = '';
+    if (!files.length) return;
+    try {
+      for (const f of files) await importSaveFile(type, f);
+      saves = await api.listSaves(type);
+      render();
+      toast(`Imported ${files.length} save${files.length > 1 ? 's' : ''} ✓`);
+    } catch (e) { toast('Import failed: ' + e.message, true); }
+  });
+
   const close = openModal({
     title,
-    body: [el('div', { class: 'save-toolbar' }, search, sort, tagSel), grid],
+    body: [
+      isStatic ? el('div', { class: 'mode-note', html:
+        'This is the web build. The saves that ship with the site are read-only — anything you save here is kept <b>in this browser</b> on this device. Use ⤓ to download a save and 📥 to bring one in.' }) : null,
+      el('div', { class: 'save-toolbar' }, search, sort, tagSel), grid, importer,
+    ],
+    foot: el('button', {
+      class: 'tb', text: '📥 Import save…', title: 'Load a .json save file',
+      onclick: () => importer.click(),
+    }),
   });
 
   api.listSaves(type).then(list => {
@@ -1029,6 +1066,13 @@ export function openHelp() {
           <li><b>Middle-drag</b> — pan</li>
           <li><b>Scroll wheel</b> — zoom</li>
           <li><kbd>F</kbd> — frame the whole board</li>
+        </ul>
+        <h4>Touch &amp; phones</h4>
+        <ul>
+          <li><b>🖐 Look / ✏️ Edit</b> (bottom-left) decides what one finger does: move the camera, or use the current tool.</li>
+          <li><b>Two fingers</b> always pinch to zoom and drag to pan, in either mode.</li>
+          <li>In 🖐 Look, a <b>quick tap</b> still selects — then move it with the ✥ / ⟳ handles.</li>
+          <li><b>☰</b> and <b>⚙</b> in the top bar open the tool and property panels.</li>
         </ul>
         <h4>Sub-Board Editor</h4>
         <ul>

@@ -20,3 +20,6 @@ desktop.ini
 
 # Node (if ever added)
 node_modules/
+
+# static site build (tools/build_static.py)
+dist/

@@ -31,6 +31,8 @@ SAVE_TYPES = ("subboard", "board", "tilepreset", "cubepreset", "tokenpreset")
 TEXTURE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")
 MODEL_EXTS = (".fbx", ".glb", ".gltf", ".obj")
 PORT = int(os.environ.get("PORT", "8420"))
+if "--port" in sys.argv:
+    PORT = int(sys.argv[sys.argv.index("--port") + 1])
 
 
 # ---------------------------------------------------------------- helpers

@@ -1,0 +1,65 @@
+# Builds the server-less Map Builder and publishes it to GitHub Pages.
+#
+# The texture assets are stored with Git LFS, so the checkout has to pull the
+# real files (lfs: true) — without it the build would copy pointer text files
+# and every texture on the site would be broken.
+name: Deploy Map Builder to Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/**'
+      - 'TextureAssets/**'
+      - 'saves/**'
+      - 'tools/build_static.py'
+      - 'server.py'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:        # lets you deploy by hand from the Actions tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# never let two deploys race; a newer push wins
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build static site
+        run: python tools/build_static.py --out dist
+
+      - name: Fail if LFS pointers slipped through
+        run: |
+          if grep -rlq "git-lfs.github.com/spec" dist/assets; then
+            echo "::error::dist/assets still contains Git LFS pointer files — the checkout did not fetch LFS objects."
+            exit 1
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
