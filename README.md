@@ -4,6 +4,10 @@ A localhost 3D map builder for the board game. Design **sub-boards** (grid board
 with painted tiles, layers, cubes and tokens), then combine them into full
 **boards** in Assembly mode. Everything is saved as JSON files on disk.
 
+Design and codebase documentation lives in **[`Design/`](Design/Overview.md)** —
+start with `Design/Overview.md`. Agents working on this repo should read
+`Design/AI-Instructions.md` first.
+
 ## Run it
 
 Double-click **`MapBuilder.exe`** — it starts the server and opens the browser
